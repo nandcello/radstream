@@ -51,28 +51,6 @@ const server = serve({
     // Serve index.html for all unmatched routes.
     "/*": index,
 
-    "/api/hello": {
-      async GET(_req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "GET",
-        });
-      },
-      async PUT(_req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "PUT",
-        });
-      },
-    },
-
-    "/api/hello/:name": async (req) => {
-      const name = req.params.name;
-      return Response.json({
-        message: `Hello, ${name}!`,
-      });
-    },
-
     "/api/oauth/google/callback": async (req) => {
       const url = new URL(req.url);
       const code = url.searchParams.get("code");
@@ -182,6 +160,8 @@ const server = serve({
             description: info.raw.snippet.description,
             id: info.id,
             status: info.status,
+            streamStatus: info.streamStatus,
+            healthStatus: info.healthStatus,
             title: info.title,
             url: info.url,
           },
@@ -215,6 +195,8 @@ const server = serve({
               description: out.raw.snippet.description,
               id: out.id,
               status: out.status,
+              streamStatus: out.streamStatus,
+              healthStatus: out.healthStatus,
               title: out.title,
               url: out.url,
             },
@@ -230,12 +212,18 @@ const server = serve({
     "/api/youtube/stream-key": async () => {
       try {
         console.log("[API] GET /api/youtube/stream-key");
-        const { streamKey, ingestUrl } = await getYouTubeStreamKey();
+        const { streamKey, ingestUrl, streamStatus, healthStatus } =
+          await getYouTubeStreamKey();
         console.log("[API] stream-key ->", {
           hasKey: !!streamKey,
           hasIngest: !!ingestUrl,
         });
-        return Response.json({ ingestUrl, streamKey });
+        return Response.json({
+          ingestUrl,
+          streamKey,
+          streamStatus,
+          healthStatus,
+        });
       } catch (error) {
         console.error("[API] stream-key error:", error);
         return new Response(String(error), { status: 500 });
@@ -246,12 +234,18 @@ const server = serve({
     "/api/youtube/stream-key/peek": async () => {
       try {
         console.log("[API] GET /api/youtube/stream-key/peek");
-        const { streamKey, ingestUrl } = await peekYouTubeStreamKey();
+        const { streamKey, ingestUrl, streamStatus, healthStatus } =
+          await peekYouTubeStreamKey();
         console.log("[API] stream-key/peek ->", {
           hasKey: !!streamKey,
           hasIngest: !!ingestUrl,
         });
-        return Response.json({ ingestUrl, streamKey });
+        return Response.json({
+          ingestUrl,
+          streamKey,
+          streamStatus,
+          healthStatus,
+        });
       } catch (error) {
         console.error("[API] stream-key/peek error:", error);
         return new Response(String(error), { status: 500 });

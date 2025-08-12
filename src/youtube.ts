@@ -167,7 +167,7 @@ type YouTubeLiveStreamsList = {
         rtmpsIngestionAddress?: string;
       };
     };
-    status?: { streamStatus?: string };
+    status?: { streamStatus?: string; healthStatus?: { status?: string } };
     contentDetails?: { isReusable?: boolean };
   }>;
 };
@@ -196,6 +196,9 @@ export type YouTubeLiveBroadcast = {
     actualEndTime?: string; // ISO date string
     isDefaultBroadcast?: boolean;
     liveChatId?: string;
+  };
+  contentDetails?: {
+    boundStreamId?: string;
   };
   status: {
     lifeCycleStatus:
@@ -372,6 +375,20 @@ export async function upsertMostRecentActiveBroadcastTitleDescription(input: {
       id: updated.id,
       status: updated.status.lifeCycleStatus,
     });
+    // Resolve statuses from bound stream if available
+    let streamStatus: string | undefined;
+    let healthStatus: string | undefined;
+    const boundId = updated.contentDetails?.boundStreamId;
+    if (boundId) {
+      try {
+        const streams = await listStreams(access_token);
+        const s = (streams.items ?? []).find((i) => i.id === boundId);
+        streamStatus = s?.status?.streamStatus;
+        healthStatus = s?.status?.healthStatus?.status;
+      } catch (e) {
+        ytError("Failed to resolve bound stream status after update", e);
+      }
+    }
     return {
       actualStartTime: updated.snippet.actualStartTime,
       id: updated.id,
@@ -379,6 +396,8 @@ export async function upsertMostRecentActiveBroadcastTitleDescription(input: {
       privacyStatus: updated.status.privacyStatus,
       raw: updated,
       status: updated.status.lifeCycleStatus,
+      streamStatus,
+      healthStatus,
       title: updated.snippet.title,
       url: `https://www.youtube.com/watch?v=${updated.id}`,
     };
@@ -433,6 +452,8 @@ export type ActiveBroadcastInfo = {
   liveChatId?: string;
   url: string; // https://www.youtube.com/watch?v=ID
   raw: YouTubeLiveBroadcast; // full object for advanced callers
+  streamStatus?: string;
+  healthStatus?: string;
 };
 
 export async function getMostRecentBroadcastAnyStatus(): Promise<ActiveBroadcastInfo | null> {
@@ -445,6 +466,21 @@ export async function getMostRecentBroadcastAnyStatus(): Promise<ActiveBroadcast
     id: picked.id,
     status: picked.status.lifeCycleStatus,
   });
+  // Resolve statuses from bound stream (if any)
+  let streamStatus: string | undefined;
+  let healthStatus: string | undefined;
+  const boundId = picked.contentDetails?.boundStreamId;
+  if (boundId) {
+    try {
+      const streams = await listStreams(access_token);
+
+      const boundStream = (streams.items ?? []).find((i) => i.id === boundId);
+      streamStatus = boundStream?.status?.streamStatus;
+      healthStatus = boundStream?.status?.healthStatus?.status;
+    } catch (e) {
+      ytError("Failed to resolve bound stream status", e);
+    }
+  }
   return {
     actualStartTime: picked.snippet.actualStartTime,
     id: picked.id,
@@ -452,6 +488,8 @@ export async function getMostRecentBroadcastAnyStatus(): Promise<ActiveBroadcast
     privacyStatus: picked.status.privacyStatus,
     raw: picked,
     status: picked.status.lifeCycleStatus,
+    streamStatus,
+    healthStatus,
     title: picked.snippet.title,
     url: `https://www.youtube.com/watch?v=${picked.id}`,
   };
@@ -480,6 +518,8 @@ async function insertReusableStream(accessToken: string): Promise<string> {
 export async function getYouTubeStreamKey(): Promise<{
   streamKey: string;
   ingestUrl?: string;
+  streamStatus?: string;
+  healthStatus?: string;
 }> {
   const { access_token } = await ensureAccessToken();
   const list = await listStreams(access_token);
@@ -491,7 +531,12 @@ export async function getYouTubeStreamKey(): Promise<{
       const ingest =
         s.cdn?.ingestionInfo?.rtmpsIngestionAddress ??
         s.cdn?.ingestionInfo?.ingestionAddress;
-      return { ingestUrl: ingest, streamKey: key };
+      return {
+        ingestUrl: ingest,
+        streamKey: key,
+        streamStatus: s.status?.streamStatus,
+        healthStatus: s.status?.healthStatus?.status,
+      };
     }
   }
 
@@ -504,6 +549,8 @@ export async function getYouTubeStreamKey(): Promise<{
 export async function peekYouTubeStreamKey(): Promise<{
   streamKey?: string;
   ingestUrl?: string;
+  streamStatus?: string;
+  healthStatus?: string;
 }> {
   const { access_token } = await ensureAccessToken();
   const list = await listStreams(access_token);
@@ -513,7 +560,12 @@ export async function peekYouTubeStreamKey(): Promise<{
       const ingest =
         s.cdn?.ingestionInfo?.rtmpsIngestionAddress ??
         s.cdn?.ingestionInfo?.ingestionAddress;
-      return { ingestUrl: ingest, streamKey: key };
+      return {
+        ingestUrl: ingest,
+        streamKey: key,
+        streamStatus: s.status?.streamStatus,
+        healthStatus: s.status?.healthStatus?.status,
+      };
     }
   }
   return {};

@@ -19,7 +19,12 @@ export function App() {
     mutationFn: async () => {
       const r = await fetch("/api/youtube/stream-key");
       if (!r.ok) throw new Error("stream-key failed");
-      return (await r.json()) as { streamKey?: string; ingestUrl?: string };
+      return (await r.json()) as {
+        streamKey?: string;
+        ingestUrl?: string;
+        streamStatus?: string;
+        healthStatus?: string;
+      };
     },
     mutationKey: ["yt-stream-key"],
   });
@@ -30,7 +35,12 @@ export function App() {
     queryFn: async () => {
       const r = await fetch("/api/youtube/stream-key/peek");
       if (!r.ok) throw new Error("stream-key-peek failed");
-      return (await r.json()) as { streamKey?: string; ingestUrl?: string };
+      return (await r.json()) as {
+        streamKey?: string;
+        ingestUrl?: string;
+        streamStatus?: string;
+        healthStatus?: string;
+      };
     },
     queryKey: ["yt-stream-key-peek"],
   });
@@ -52,6 +62,8 @@ export function App() {
           description: string;
           url: string;
           status: string;
+          streamStatus?: string;
+          healthStatus?: string;
         };
       };
     },
@@ -87,6 +99,8 @@ export function App() {
           description: string;
           url: string;
           status: string;
+          streamStatus?: string;
+          healthStatus?: string;
         };
       };
     },
@@ -105,6 +119,14 @@ export function App() {
       ? resolvedKey
       : "••••••••••" // don't leak exact length
     : "";
+
+  // Prefer peek (non-creating) statuses, fall back to mutation response
+  const resolvedStreamStatus = peekLoading
+    ? undefined
+    : (peek?.streamStatus ?? streamKeyMutation.data?.streamStatus);
+  const resolvedHealthStatus = peekLoading
+    ? undefined
+    : (peek?.healthStatus ?? streamKeyMutation.data?.healthStatus);
 
   const copyKey = async () => {
     if (!resolvedKey) return;
@@ -161,6 +183,12 @@ export function App() {
           </>
         )}
       </div>
+      {auth?.authorized && (
+        <LivestreamStatuses
+          streamStatus={resolvedStreamStatus}
+          healthStatus={resolvedHealthStatus}
+        />
+      )}
 
       {auth?.authorized && (
         <div style={{ marginTop: 24 }}>
@@ -169,6 +197,10 @@ export function App() {
           {!latestLoading && latest?.broadcast && (
             <div>
               <BroadcastStatus status={latest.broadcast.status} />
+              <LivestreamStatuses
+                streamStatus={latest.broadcast.streamStatus}
+                healthStatus={latest.broadcast.healthStatus}
+              />
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -289,5 +321,27 @@ function BroadcastStatus({ status }: { status: string }) {
     <p style={{ margin: "2px 0 8px", fontWeight: 500 }}>
       Status: <span style={{ color }}>{label}</span>
     </p>
+  );
+}
+
+function LivestreamStatuses(props: {
+  streamStatus?: string;
+  healthStatus?: string;
+}) {
+  const { streamStatus, healthStatus } = props;
+  if (!streamStatus && !healthStatus) return null;
+  return (
+    <div style={{ display: "flex", gap: 12, margin: "0 0 8px" }}>
+      {typeof streamStatus === "string" && (
+        <span>
+          Stream: <strong>{streamStatus}</strong>
+        </span>
+      )}
+      {typeof healthStatus === "string" && (
+        <span>
+          Health: <strong>{healthStatus}</strong>
+        </span>
+      )}
+    </div>
   );
 }
