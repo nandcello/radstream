@@ -28,9 +28,6 @@
     "enabled": true,
     "actions": {
       "source": {
-        "useSortedKeys": "on",
-        "useSortedAttributes": "on",
-        "useSortedProperties": "on",
         "recommended": true,
         "organizeImports": "on"
       }
