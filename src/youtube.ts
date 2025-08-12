@@ -6,7 +6,7 @@ type DeviceCodeResponse = {
   interval: number;
 };
 
-type TokenResponse = {
+export type TokenResponse = {
   access_token: string;
   refresh_token?: string;
   expires_in: number;
@@ -20,6 +20,7 @@ const GOOGLE_DEVICE_CODE = "https://oauth2.googleapis.com/device/code";
 const GOOGLE_TOKEN = "https://oauth2.googleapis.com/token";
 const YT_API = "https://www.googleapis.com/youtube/v3";
 const SCOPE = "https://www.googleapis.com/auth/youtube";
+export const GOOGLE_OAUTH_SCOPE = SCOPE;
 
 const TOKEN_PATH = Bun.env.YT_TOKEN_PATH ?? "./.yt-oauth-token.json";
 
@@ -41,9 +42,9 @@ async function postForm<T>(
 ): Promise<T> {
   const body = new URLSearchParams(form);
   const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    method: "POST",
   });
   if (!res.ok) {
     const text = await res.text();
@@ -63,11 +64,11 @@ async function getJSON<T>(url: string, accessToken: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function saveTokenFile(obj: unknown) {
+export async function saveTokenFile(obj: unknown) {
   await Bun.write(TOKEN_PATH, JSON.stringify(obj, null, 2));
 }
 
-async function loadTokenFile<T>(): Promise<T | null> {
+export async function loadTokenFile<T>(): Promise<T | null> {
   try {
     return JSON.parse(await Bun.file(TOKEN_PATH).text()) as T;
   } catch {
@@ -178,6 +179,8 @@ export type YouTubeLiveBroadcast = {
     channelId: string;
     title: string;
     description: string;
+    scheduledStartTime?: string; // ISO date string
+    scheduledEndTime?: string; // ISO date string
     actualStartTime?: string; // ISO date string
     actualEndTime?: string; // ISO date string
     isDefaultBroadcast?: boolean;
@@ -203,23 +206,10 @@ type YouTubeListBroadcast = {
   items: Array<YouTubeLiveBroadcast>;
 };
 
-// Active broadcasts: currently live/testing/ready under the authenticated channel
-async function listActiveBroadcasts(accessToken: string) {
-  const url = `${YT_API}/liveBroadcasts?part=id,snippet,contentDetails,status&mine=true&broadcastStatus=active&maxResults=50`;
+// List broadcasts by status
+async function listBroadcasts(accessToken: string) {
+  const url = `${YT_API}/liveBroadcasts?part=id,snippet,contentDetails,status&mine=true&maxResults=50`;
   return getJSON<YouTubeListBroadcast>(url, accessToken);
-}
-
-// Fetch a broadcast by ID (snippet only by default)
-async function getBroadcastById(
-  accessToken: string,
-  id: string,
-  part: string = "id,snippet,contentDetails,status",
-): Promise<YouTubeLiveBroadcast | null> {
-  const url = `${YT_API}/liveBroadcasts?part=${encodeURIComponent(
-    part,
-  )}&id=${encodeURIComponent(id)}`;
-  const res = await getJSON<YouTubeListBroadcast>(url, accessToken);
-  return res.items?.[0] ?? null;
 }
 
 export type UpdateBroadcastInput = {
@@ -244,15 +234,15 @@ export async function updateTitleDescription(
 
   const url = `${YT_API}/liveBroadcasts?part=snippet`;
   const res = await fetch(url, {
-    method: "PUT",
-    headers: {
-      Authorization: `Bearer ${access_token}`,
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
       id: broadcastId,
       snippet: snippetUpdates,
     }),
+    headers: {
+      Authorization: `Bearer ${access_token}`,
+      "Content-Type": "application/json",
+    },
+    method: "PUT",
   });
 
   if (!res.ok) {
@@ -266,15 +256,25 @@ export function pickMostRecentBroadcast(
   items: YouTubeLiveBroadcast[] | undefined,
 ): YouTubeLiveBroadcast | null {
   if (!items || items.length === 0) return null;
-  const copy = items.slice();
-  copy.sort((a, b) => {
-    const aStr = a.snippet.actualStartTime ?? a.snippet.publishedAt;
-    const bStr = b.snippet.actualStartTime ?? b.snippet.publishedAt;
-    const ta = aStr ? Date.parse(aStr) : 0;
-    const tb = bStr ? Date.parse(bStr) : 0;
-    return tb - ta; // newest first
-  });
-  return copy[0] ?? null;
+  const timeOf = (b: YouTubeLiveBroadcast) => {
+    const s = b.snippet;
+    const candidate =
+      s.actualStartTime ||
+      s.scheduledStartTime ||
+      s.actualEndTime ||
+      s.publishedAt;
+    return candidate ? Date.parse(candidate) : 0;
+  };
+  let newest: YouTubeLiveBroadcast | null = null;
+  let newestTs = -Infinity;
+  for (const b of items) {
+    const t = timeOf(b);
+    if (t > newestTs) {
+      newest = b;
+      newestTs = t;
+    }
+  }
+  return newest;
 }
 
 export type ActiveBroadcastInfo = {
@@ -288,38 +288,37 @@ export type ActiveBroadcastInfo = {
   raw: YouTubeLiveBroadcast; // full object for advanced callers
 };
 
-// Retrieve the most recent active broadcast for the authenticated channel
-export async function getMostRecentActiveBroadcast(): Promise<ActiveBroadcastInfo | null> {
+export async function getMostRecentBroadcastAnyStatus(): Promise<ActiveBroadcastInfo | null> {
   const { access_token } = await ensureAccessToken();
-  const list = await listActiveBroadcasts(access_token);
-  const picked = pickMostRecentBroadcast(list.items);
-  if (!picked) return null;
+  const broadcasts = await listBroadcasts(access_token);
 
+  const picked = pickMostRecentBroadcast(broadcasts.items);
+  if (!picked) return null;
   return {
-    id: picked.id,
-    title: picked.snippet.title,
-    status: picked.status.lifeCycleStatus,
-    privacyStatus: picked.status.privacyStatus,
     actualStartTime: picked.snippet.actualStartTime,
+    id: picked.id,
     liveChatId: picked.snippet.liveChatId,
-    url: `https://www.youtube.com/watch?v=${picked.id}`,
+    privacyStatus: picked.status.privacyStatus,
     raw: picked,
+    status: picked.status.lifeCycleStatus,
+    title: picked.snippet.title,
+    url: `https://www.youtube.com/watch?v=${picked.id}`,
   };
 }
 
 async function insertReusableStream(accessToken: string): Promise<string> {
   const url = `${YT_API}/liveStreams?part=snippet,cdn,contentDetails`;
   const res = await fetch(url, {
-    method: "POST",
+    body: JSON.stringify({
+      cdn: { ingestionType: "rtmp" },
+      contentDetails: { isReusable: true },
+      snippet: { title: "CLI reusable stream" },
+    }),
     headers: {
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      snippet: { title: "CLI reusable stream" },
-      cdn: { ingestionType: "rtmp" },
-      contentDetails: { isReusable: true },
-    }),
+    method: "POST",
   });
   if (!res.ok) throw new Error(`Insert failed: ${await res.text()}`);
   const data = (await res.json()) as YouTubeLiveStream;
@@ -341,13 +340,32 @@ export async function getYouTubeStreamKey(): Promise<{
       const ingest =
         s.cdn?.ingestionInfo?.rtmpsIngestionAddress ??
         s.cdn?.ingestionInfo?.ingestionAddress;
-      return { streamKey: key, ingestUrl: ingest };
+      return { ingestUrl: ingest, streamKey: key };
     }
   }
 
   // Otherwise create a new reusable stream
   const streamKey = await insertReusableStream(access_token);
   return { streamKey };
+}
+
+// Peek only: return an existing reusable stream key if present, without creating one
+export async function peekYouTubeStreamKey(): Promise<{
+  streamKey?: string;
+  ingestUrl?: string;
+}> {
+  const { access_token } = await ensureAccessToken();
+  const list = await listStreams(access_token);
+  for (const s of list.items ?? []) {
+    const key = s.cdn?.ingestionInfo?.streamName;
+    if (key && (s.contentDetails?.isReusable ?? true)) {
+      const ingest =
+        s.cdn?.ingestionInfo?.rtmpsIngestionAddress ??
+        s.cdn?.ingestionInfo?.ingestionAddress;
+      return { ingestUrl: ingest, streamKey: key };
+    }
+  }
+  return {};
 }
 
 // Run directly: bun run src/youtube-stream-key.ts
