@@ -24,6 +24,15 @@ export const GOOGLE_OAUTH_SCOPE = SCOPE;
 
 const TOKEN_PATH = Bun.env.YT_TOKEN_PATH ?? "./.yt-oauth-token.json";
 
+// --- tiny logger helpers (avoid leaking secrets) ---
+const YT_LOG_PREFIX = "[YouTube]";
+function ytLog(...args: unknown[]) {
+  console.log(YT_LOG_PREFIX, ...args);
+}
+function ytError(...args: unknown[]) {
+  console.error(YT_LOG_PREFIX, ...args);
+}
+
 function validateString(val: string | undefined) {
   if (val === undefined) throw new Error("Expected a string value");
   return val;
@@ -86,6 +95,7 @@ async function ensureAccessToken(): Promise<{
   const saved = await loadTokenFile<TokenResponse>();
   if (saved?.refresh_token) {
     try {
+      ytLog("Using refresh token to obtain access token");
       const refreshed = await postForm<TokenResponse>(GOOGLE_TOKEN, {
         client_id: clientId,
         client_secret: clientSecret,
@@ -97,12 +107,13 @@ async function ensureAccessToken(): Promise<{
         ...refreshed,
         refresh_token: saved.refresh_token,
       });
+      ytLog("Access token refreshed successfully");
       return {
         access_token: refreshed.access_token,
         refresh_token: saved.refresh_token,
       };
     } catch (e) {
-      console.warn("Refresh failed, falling back to device flow:", e);
+      ytError("Refresh failed, falling back to device flow:", e);
     }
   }
 
@@ -209,7 +220,20 @@ type YouTubeListBroadcast = {
 // List broadcasts by status
 async function listBroadcasts(accessToken: string) {
   const url = `${YT_API}/liveBroadcasts?part=id,snippet,contentDetails,status&mine=true&maxResults=50`;
-  return getJSON<YouTubeListBroadcast>(url, accessToken);
+  const data = await getJSON<YouTubeListBroadcast>(url, accessToken);
+  ytLog("Fetched broadcasts:", data.items?.length ?? 0);
+  return data;
+}
+
+// Fetch a broadcast by ID (full parts by default)
+async function getBroadcastById(
+  accessToken: string,
+  id: string,
+  part: string = "id,snippet,contentDetails,status",
+): Promise<YouTubeLiveBroadcast | null> {
+  const url = `${YT_API}/liveBroadcasts?part=${encodeURIComponent(part)}&id=${encodeURIComponent(id)}`;
+  const res = await getJSON<YouTubeListBroadcast>(url, accessToken);
+  return res.items?.[0] ?? null;
 }
 
 export type UpdateBroadcastInput = {
@@ -228,11 +252,22 @@ export async function updateTitleDescription(
   const { access_token } = await ensureAccessToken();
 
   // Only include provided fields
-  const snippetUpdates: Record<string, string> = {};
+  const now = new Date();
+  const scheduledStartTime = new Date(
+    now.getTime() + 5 * 60 * 1000,
+  ).toISOString();
+  const snippetUpdates: Record<string, string> = {
+    scheduledStartTime,
+  };
   if (title !== undefined) snippetUpdates.title = title;
   if (description !== undefined) snippetUpdates.description = description;
 
   const url = `${YT_API}/liveBroadcasts?part=snippet`;
+  ytLog("Updating broadcast snippet", {
+    broadcastId,
+    titleLen: title?.length ?? 0,
+    descLen: description?.length ?? 0,
+  });
   const res = await fetch(url, {
     body: JSON.stringify({
       id: broadcastId,
@@ -247,10 +282,122 @@ export async function updateTitleDescription(
 
   if (!res.ok) {
     const text = await res.text();
+    ytError("Broadcast update failed", { status: res.status, body: text });
     throw new Error(`Update failed (HTTP ${res.status}): ${text}`);
   }
+  ytLog("Broadcast updated", { broadcastId });
 }
 
+// ---- Broadcast creation & upsert helpers ----
+function isActiveStatus(s: YouTubeLiveBroadcast["status"]["lifeCycleStatus"]) {
+  // Treat these as active/editable; exclude complete/canceled/revoked
+  return s === "live" || s === "testing" || s === "ready" || s === "created";
+}
+
+async function insertBroadcast(
+  accessToken: string,
+  { title, description }: { title?: string; description?: string },
+): Promise<YouTubeLiveBroadcast> {
+  const url = `${YT_API}/liveBroadcasts?part=snippet,contentDetails,status`;
+  ytLog("Creating new private broadcast", {
+    titleLen: title?.length ?? 0,
+    descLen: description?.length ?? 0,
+  });
+
+  const now = new Date();
+  const scheduledStartTime = new Date(
+    now.getTime() + 5 * 60 * 1000,
+  ).toISOString();
+  const snippetBody: Record<string, string> = {
+    scheduledStartTime,
+  };
+
+  if (title) snippetBody.title = title;
+  if (description) snippetBody.description = description;
+
+  const res = await fetch(url, {
+    body: JSON.stringify({
+      snippet: snippetBody,
+      // Keep it private and not started; user can activate later
+      status: {
+        privacyStatus: "private",
+      },
+    }),
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    ytError("Create broadcast failed", { status: res.status, body });
+    throw new Error(`Insert broadcast failed: ${body}`);
+  }
+  const created = (await res.json()) as YouTubeLiveBroadcast;
+  ytLog("Created broadcast", {
+    id: created.id,
+    status: created.status?.lifeCycleStatus,
+  });
+  return created;
+}
+
+export async function upsertMostRecentActiveBroadcastTitleDescription(input: {
+  title?: string;
+  description?: string;
+}): Promise<ActiveBroadcastInfo> {
+  const { access_token } = await ensureAccessToken();
+  const list = await listBroadcasts(access_token);
+  // pick most recent among active statuses
+  const active = (list.items ?? []).filter((b) =>
+    isActiveStatus(b.status.lifeCycleStatus),
+  );
+  ytLog("Active broadcasts count:", active.length);
+  const picked = pickMostRecentBroadcast(active);
+  ytLog(
+    "Picked broadcast:",
+    picked ? { id: picked.id, status: picked.status.lifeCycleStatus } : null,
+  );
+
+  if (picked) {
+    ytLog("Updating existing broadcast", { id: picked.id });
+    await updateTitleDescription({
+      broadcastId: picked.id,
+      title: input.title,
+      description: input.description,
+    });
+    // fetch updated to return fresh values
+    const updated = (await getBroadcastById(access_token, picked.id)) ?? picked;
+    ytLog("Updated broadcast fetched", {
+      id: updated.id,
+      status: updated.status.lifeCycleStatus,
+    });
+    return {
+      actualStartTime: updated.snippet.actualStartTime,
+      id: updated.id,
+      liveChatId: updated.snippet.liveChatId,
+      privacyStatus: updated.status.privacyStatus,
+      raw: updated,
+      status: updated.status.lifeCycleStatus,
+      title: updated.snippet.title,
+      url: `https://www.youtube.com/watch?v=${updated.id}`,
+    };
+  }
+
+  // none active: create new private broadcast (not active)
+  const created = await insertBroadcast(access_token, input);
+  ytLog("Returning newly created broadcast", { id: created.id });
+  return {
+    actualStartTime: created.snippet.actualStartTime,
+    id: created.id,
+    liveChatId: created.snippet.liveChatId,
+    privacyStatus: created.status.privacyStatus,
+    raw: created,
+    status: created.status.lifeCycleStatus,
+    title: created.snippet.title,
+    url: `https://www.youtube.com/watch?v=${created.id}`,
+  };
+}
 // Pick the most recent broadcast by actualStartTime, falling back to publishedAt
 export function pickMostRecentBroadcast(
   items: YouTubeLiveBroadcast[] | undefined,
@@ -294,6 +441,10 @@ export async function getMostRecentBroadcastAnyStatus(): Promise<ActiveBroadcast
 
   const picked = pickMostRecentBroadcast(broadcasts.items);
   if (!picked) return null;
+  ytLog("Most recent broadcast (any status)", {
+    id: picked.id,
+    status: picked.status.lifeCycleStatus,
+  });
   return {
     actualStartTime: picked.snippet.actualStartTime,
     id: picked.id,

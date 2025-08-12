@@ -1,8 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import "./index.css";
 
 export function App() {
+  const qc = useQueryClient();
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
   const { data: auth, isLoading: authLoading } = useQuery({
@@ -55,6 +56,44 @@ export function App() {
       };
     },
     queryKey: ["yt-latest-broadcast"],
+  });
+
+  // Local edit form state (prefill when latest loads)
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  useEffect(() => {
+    if (latest?.broadcast) {
+      setTitle(latest.broadcast.title ?? "");
+      setDescription(latest.broadcast.description ?? "");
+    } else {
+      setTitle("");
+      setDescription("");
+    }
+  }, [latest?.broadcast?.id]);
+
+  const saveBroadcast = useMutation({
+    mutationFn: async (body: { title?: string; description?: string }) => {
+      const r = await fetch("/api/youtube/broadcast/save", {
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (!r.ok) throw new Error("save-broadcast failed");
+      return (await r.json()) as {
+        broadcast: null | {
+          id: string;
+          title: string;
+          description: string;
+          url: string;
+          status: string;
+        };
+      };
+    },
+    mutationKey: ["yt-broadcast-save"],
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["yt-latest-broadcast"] });
+    },
   });
 
   const resolvedKey = peekLoading
@@ -129,16 +168,81 @@ export function App() {
           {latestLoading && <p>Loading broadcast…</p>}
           {!latestLoading && latest?.broadcast && (
             <div>
-              <h3 style={{ margin: "4px 0" }}>{latest.broadcast.title}</h3>
-              {/* Broadcast status */}
               <BroadcastStatus status={latest.broadcast.status} />
-              <p style={{ whiteSpace: "pre-wrap" }}>
-                {latest.broadcast.description}
-              </p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveBroadcast.mutate({ title, description });
+                }}
+                style={{ display: "grid", gap: 8, maxWidth: 640 }}
+              >
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span>Title</span>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Broadcast title"
+                    type="text"
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span>Description</span>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Broadcast description"
+                    rows={6}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button disabled={saveBroadcast.isPending} type="submit">
+                    {saveBroadcast.isPending ? "Saving…" : "Save"}
+                  </button>
+                  {saveBroadcast.error && (
+                    <span style={{ color: "tomato" }}>Save failed.</span>
+                  )}
+                </div>
+              </form>
             </div>
           )}
           {!latestLoading && latest && latest.broadcast === null && (
-            <p>No active broadcast found.</p>
+            <div>
+              <p>No active broadcast found. Create one:</p>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  saveBroadcast.mutate({ title, description });
+                }}
+                style={{ display: "grid", gap: 8, maxWidth: 640 }}
+              >
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span>Title</span>
+                  <input
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Broadcast title"
+                    type="text"
+                  />
+                </label>
+                <label style={{ display: "grid", gap: 4 }}>
+                  <span>Description</span>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Broadcast description"
+                    rows={6}
+                  />
+                </label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button disabled={saveBroadcast.isPending} type="submit">
+                    {saveBroadcast.isPending ? "Creating…" : "Create"}
+                  </button>
+                  {saveBroadcast.error && (
+                    <span style={{ color: "tomato" }}>Action failed.</span>
+                  )}
+                </div>
+              </form>
+            </div>
           )}
         </div>
       )}
