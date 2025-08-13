@@ -4,11 +4,7 @@
 - **Stack:** Bun (JS runtime), React 19, TailwindCSS 4, no Vite/Node/NPM.
 - **Entrypoint:** `src/index.tsx` (React app, Bun server, Tailwind integration).
 - **Frontend:** React components in `src/`, styled with Tailwind. Main app: `App.tsx`.
-- **Build/Run:**
-  - Install: `bun install`
-  - Dev: `bun dev` (hot reload)
-  - Prod: `bun start`
-  - Build: `bun run build.ts`
+- Install: `bun install`
 - **Tailwind:** Uses `bun-plugin-tailwind` and `tailwindcss`.
 
 ## Key Conventions
@@ -18,8 +14,8 @@
 - **No Express/Vite:**
   - Use `Bun.serve()` for HTTP/WebSocket servers.
   - Use HTML imports for frontend (no Vite).
-- **Testing:**
-  - Use `bun test` (see `.cursor/rules/use-bun-instead-of-node-vite-npm-pnpm.mdc`).
+- **NEVER** run the dev server. The user has already one up and running.
+- **NEVER** build the project.
 
 ## Patterns & Structure
 - **React:** All UI logic/components in `src/`.
@@ -27,14 +23,8 @@
 - **Build:** `build.ts` is the build script (see for custom logic).
 - **No legacy Node APIs:** Use Bun's built-ins (e.g., `Bun.file`, `Bun.serve`).
 
-## Examples
-- **Start dev server:** `bun dev`
-- **Build:** `bun run build.ts`
-- **Serve production:** `bun start`
-
 ## References
 - See `README.md` for quickstart.
-- See `.cursor/rules/use-bun-instead-of-node-vite-npm-pnpm.mdc` for enforced Bun usage.
 - Main app: `src/index.tsx`, `src/App.tsx`
 
 ---
