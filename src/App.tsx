@@ -1,8 +1,140 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Button } from "./components/ui/button";
+import { Card } from "./components/ui/card";
+import { useAuth, useCurrentUser } from "./hooks/auth";
 import "./index.css";
+import { Loader } from "lucide-react";
+import { Input } from "./components/ui/input";
+import { Textarea } from "./components/ui/textarea";
 
 export function App() {
+  return (
+    <main className="px-2">
+      <h1>radstream</h1>
+      <Card className="px-4 py-2 max-w-xl">
+        <YTAuthButton />
+        <TitleDescription />
+      </Card>
+    </main>
+  );
+}
+
+const TitleDescription = () => {
+  const { user, isLoading: isUserLoading } = useCurrentUser();
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ["yt-latest-broadcast"],
+    queryFn: async () => {
+      const r = await fetch("/api/broadcast/fields");
+      const data = (await r.json()) as {
+        id: string;
+        title?: string;
+        description?: string;
+      };
+      if (!r.ok) throw new Error("broadcast-fields failed");
+      return data;
+    },
+    enabled: !!user,
+  });
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: async ({
+      title,
+      description,
+    }: {
+      title: string;
+      description: string;
+    }) => {
+      await fetch("/api/broadcast/fields", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          id: data?.id,
+          title,
+          description,
+        }),
+      });
+      refetch();
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (isPending) return;
+    const formData = new FormData(e.currentTarget);
+    mutate({
+      title: formData.get("title") as string,
+      description: formData.get("description") as string,
+    });
+  };
+
+  if (isLoading || isUserLoading) return <p>Loading broadcast info...</p>;
+
+  if (!user) return null;
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <label htmlFor="title">Title</label>
+      <Input
+        name="title"
+        className="mb-3"
+        id="title"
+        type="text"
+        defaultValue={data?.title ?? ""}
+      />
+      <label htmlFor="description">Description</label>
+      <Textarea
+        name="description"
+        className="mb-3"
+        id="description"
+        defaultValue={data?.description ?? ""}
+      />
+      <Button className="flex justify-self-end" type="submit">
+        Save{" "}
+        {isPending && (
+          <span className="animate-spin">
+            <Loader />
+          </span>
+        )}
+      </Button>
+    </form>
+  );
+};
+
+const YTAuthButton = () => {
+  const { signIn, signOut, isLoading: isAuthLoading, session } = useAuth();
+
+  const handleClick = () => {
+    signIn();
+  };
+
+  const handleSignOut = () => {
+    signOut();
+  };
+
+  if (isAuthLoading) return <p>Loading session...</p>;
+
+  if (session?.data)
+    return (
+      <div className="flex items-center justify-between">
+        <p>{session.data.user.name}</p>
+        <Button variant="ghost" type="button" onClick={handleSignOut}>
+          Sign out
+        </Button>
+      </div>
+    );
+
+  return (
+    <Button type="button" onClick={handleClick}>
+      Sign in with Google
+    </Button>
+  );
+};
+
+export function App2() {
   const qc = useQueryClient();
   const [showKey, setShowKey] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -146,20 +278,20 @@ export function App() {
       {auth && !auth.authorized && (
         <div style={{ marginBottom: 16 }}>
           <p>Not connected to YouTube.</p>
-          <button onClick={connectYouTube} type="button">
+          <Button onClick={connectYouTube} type="button">
             Connect YouTube
-          </button>
+          </Button>
         </div>
       )}
       {auth?.authorized && (
         <div style={{ marginBottom: 16 }}>
-          <button
+          <Button
             disabled={streamKeyMutation.isPending}
             onClick={() => streamKeyMutation.mutate()}
             type="button"
           >
             {streamKeyMutation.isPending ? "Fetching…" : "Get Stream Key"}
-          </button>
+          </Button>
           {streamKeyMutation.error && (
             <p style={{ color: "tomato" }}>Failed to fetch stream key.</p>
           )}
@@ -170,16 +302,16 @@ export function App() {
         <h3 style={{ margin: 0 }}>{displayKey}</h3>
         {resolvedKey && (
           <>
-            <button
+            <Button
               aria-pressed={showKey}
               onClick={() => setShowKey((s) => !s)}
               type="button"
             >
               {showKey ? "Hide" : "Show"}
-            </button>
-            <button disabled={!resolvedKey} onClick={copyKey} type="button">
+            </Button>
+            <Button disabled={!resolvedKey} onClick={copyKey} type="button">
               {copied ? "Copied" : "Copy"}
-            </button>
+            </Button>
           </>
         )}
       </div>
@@ -227,9 +359,9 @@ export function App() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button disabled={saveBroadcast.isPending} type="submit">
+                  <Button disabled={saveBroadcast.isPending} type="submit">
                     {saveBroadcast.isPending ? "Saving…" : "Save"}
-                  </button>
+                  </Button>
                   {saveBroadcast.error && (
                     <span style={{ color: "tomato" }}>Save failed.</span>
                   )}
@@ -266,9 +398,9 @@ export function App() {
                   />
                 </label>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button disabled={saveBroadcast.isPending} type="submit">
+                  <Button disabled={saveBroadcast.isPending} type="submit">
                     {saveBroadcast.isPending ? "Creating…" : "Create"}
-                  </button>
+                  </Button>
                   {saveBroadcast.error && (
                     <span style={{ color: "tomato" }}>Action failed.</span>
                   )}
