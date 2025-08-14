@@ -111,7 +111,6 @@ export const latestTitleAndDescription = async ({
     title: item.snippet.title,
     description: item.snippet.description,
   }));
-  console.log(">>> ", data?.items[0]);
   return parsedData[0];
 };
 
