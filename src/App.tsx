@@ -1,5 +1,6 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Loader } from "lucide-react";
+import { Check, Copy, Eye, EyeOff, Loader } from "lucide-react";
+import { useState } from "react";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
@@ -11,9 +12,12 @@ export function App() {
   return (
     <main className="px-2">
       <h1>radstream</h1>
-      <Card className="px-4 py-2 max-w-xl">
+      <Card className="px-4 py-2 max-w-xl mb-4">
         <YTAuthButton />
         <TitleDescription />
+      </Card>
+      <Card className="px-4 py-2 max-w-xl">
+        <StreamKey />
       </Card>
     </main>
   );
@@ -155,5 +159,71 @@ const BroadcastStatus = () => {
         {data?.status}
       </p>
     </span>
+  );
+};
+
+const StreamKey = () => {
+  const [show, setShow] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const { data } = useQuery({
+    queryKey: ["livestream", "stream-key"],
+    queryFn: () =>
+      fetch("/api/livestream/stream-key").then((res) => res.json()) as Promise<{
+        streamKey: string;
+      }>,
+  });
+
+  if (!data) return null;
+
+  return (
+    <div>
+      <h2>Stream Key</h2>
+      <div className="relative">
+        <Input
+          type={show ? "text" : "password"}
+          disabled
+          defaultValue={data.streamKey}
+          className="pr-24"
+        />
+        <div className="absolute top-1/2 -translate-y-1/2 right-1 flex gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setShow((s) => !s)}
+            className="h-7 w-7"
+          >
+            {show ? (
+              <EyeOff className="h-4 w-4" />
+            ) : (
+              <Eye className="h-4 w-4" />
+            )}
+            <span className="sr-only">{show ? "Hide" : "Show"} stream key</span>
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(data.streamKey);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1600);
+              } catch (e) {
+                console.error("Failed to copy stream key", e);
+              }
+            }}
+            className="h-7 w-7"
+          >
+            {copied ? (
+              <Check className="h-4 w-4 text-green-600" />
+            ) : (
+              <Copy className="h-4 w-4" />
+            )}
+            <span className="sr-only">Copy stream key</span>
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 };
