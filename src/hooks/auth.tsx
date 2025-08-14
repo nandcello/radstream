@@ -1,9 +1,9 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createAuthClient } from "better-auth/react";
-import { queryClient } from "@/frontend";
 
 export const authClient = createAuthClient();
 export const useAuth = () => {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ["auth", "session"],
     queryFn: () => authClient.getSession(),
