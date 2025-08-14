@@ -73,6 +73,7 @@ export const fromID = async ({
   accessToken: string;
 }) => {
   const args = new URLSearchParams({
+    parts: "id,snippet",
     id,
   });
   const response = await fetch(`${baseUrl}/liveBroadcasts?${args}`, {
@@ -84,7 +85,7 @@ export const fromID = async ({
   if (!response.ok) throw new Error("broadcast-by-id failed");
 
   const data = await response.json();
-  return data.items?.[0] as LiveBroadcast | undefined;
+  return data.items?.[0] as Pick<LiveBroadcast, "id" | "snippet"> | undefined;
 };
 
 export const latestTitleAndDescription = async ({
@@ -110,7 +111,7 @@ export const latestTitleAndDescription = async ({
     title: item.snippet.title,
     description: item.snippet.description,
   }));
-  console.log(">>> livebroadcasts response", parsedData);
+  console.log(">>> ", data?.items[0]);
   return parsedData[0];
 };
 
@@ -125,7 +126,7 @@ export const updateBroadcastTitleDescription = async ({
   description?: string;
   accessToken: string;
 }) => {
-  let currentBroadcast: LiveBroadcast | undefined;
+  let currentBroadcast: Pick<LiveBroadcast, "id" | "snippet"> | undefined;
   if (id) {
     currentBroadcast = await fromID({
       accessToken,
@@ -143,8 +144,6 @@ export const updateBroadcastTitleDescription = async ({
     return currentBroadcast;
   }
 
-  console.log(">>> ", currentBroadcast);
-
   const snippet: Record<string, string> = {};
   if (title !== undefined) snippet.title = title;
   if (description !== undefined) snippet.description = description;
@@ -154,7 +153,6 @@ export const updateBroadcastTitleDescription = async ({
     ).toISOString();
   }
 
-  console.log(">>> updating broadcast");
   const args = new URLSearchParams({
     part: "id,snippet,contentDetails",
   });
@@ -216,5 +214,32 @@ export const createBroadcast = async ({
   }
 
   const data = await response.json();
-  return data as LiveBroadcast;
+  return data as Pick<LiveBroadcast, "snippet" | "id" | "contentDetails">;
+};
+
+export const status = async ({
+  id,
+  accessToken,
+}: {
+  id: string;
+  accessToken: string;
+}) => {
+  const args = new URLSearchParams({
+    parts: "id,status",
+    id,
+  });
+  const response = await fetch(`${baseUrl}/liveBroadcasts?${args}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  if (!response.ok) throw new Error("broadcast-status failed");
+
+  const data = await response.json();
+  const latestBroadcast = data.items?.[0] as
+    | Pick<LiveBroadcast, "id" | "status">
+    | undefined;
+
+  return latestBroadcast?.status?.lifeCycleStatus;
 };
