@@ -169,23 +169,35 @@ const HealthStatus = () => {
 
   const getHealthIcon = (status: string) => {
     switch (status) {
-      case "good": return "🟢";
-      case "ok": return "🟡";
-      case "bad": return "🔴";
-      case "noData": return "⚪";
-      case "revoked": return "❌";
-      default: return "⚪";
+      case "good":
+        return "🟢";
+      case "ok":
+        return "🟡";
+      case "bad":
+        return "🔴";
+      case "noData":
+        return "⚪";
+      case "revoked":
+        return "❌";
+      default:
+        return "⚪";
     }
   };
 
   const getHealthColor = (status: string) => {
     switch (status) {
-      case "good": return "text-green-600";
-      case "ok": return "text-yellow-600";
-      case "bad": return "text-red-600";
-      case "noData": return "text-gray-500";
-      case "revoked": return "text-red-800";
-      default: return "text-gray-500";
+      case "good":
+        return "text-green-600";
+      case "ok":
+        return "text-yellow-600";
+      case "bad":
+        return "text-red-600";
+      case "noData":
+        return "text-gray-500";
+      case "revoked":
+        return "text-red-800";
+      default:
+        return "text-gray-500";
     }
   };
 

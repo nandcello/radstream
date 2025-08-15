@@ -48,7 +48,7 @@ export const getHealthStatus = async ({
     mine: "true",
     maxResults: "1",
   });
-  
+
   const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
     headers: {
       "Content-Type": "application/json",
