@@ -95,9 +95,8 @@ export const latestTitleAndDescription = async ({
 }) => {
   // ?part=id,snippet,contentDetails,status&mine=true&maxResults=50
   const args = new URLSearchParams({
-    part: "id,snippet",
+    part: "id,snippet,status",
     mine: "true",
-    maxResults: "1",
   });
   const response = await fetch(`${baseUrl}/liveBroadcasts?${args}`, {
     headers: {
@@ -106,10 +105,12 @@ export const latestTitleAndDescription = async ({
     },
   });
   const data: { items: LiveBroadcast[] } = await response.json();
+  console.log(">>> broadcasts", JSON.stringify(data, null, 2));
   const parsedData = data.items.map((item) => ({
     id: item.id,
     title: item.snippet.title,
     description: item.snippet.description,
+    status: item.status?.lifeCycleStatus,
   }));
   return parsedData[0];
 };

@@ -18,7 +18,9 @@ export const useAuth = () => {
   const { mutate: signOut } = useMutation({
     mutationFn: async () => {
       await authClient.signOut();
-      queryClient.invalidateQueries({ queryKey: ["auth"] });
+      queryClient.invalidateQueries({
+        queryKey: ["auth", "broadcast", "livestream"],
+      });
     },
   });
 

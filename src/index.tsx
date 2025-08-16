@@ -79,6 +79,11 @@ const server = serve({
           accessToken: accessToken.accessToken,
         });
 
+        console.log(
+          ">>> broadcast status",
+          JSON.stringify(latestBroadcast, null, 2),
+        );
+
         if (!latestBroadcast?.id)
           return Response.json({ error: "Not Found" }, { status: 404 });
 
@@ -109,6 +114,37 @@ const server = serve({
         });
 
         return Response.json({ streamKey });
+      },
+    },
+    "/api/livestream/status": {
+      GET: async (req) => {
+        const accessToken = await auth.api.getAccessToken({
+          body: {
+            providerId: "google",
+          },
+          headers: req.headers,
+        });
+
+        if (!accessToken.accessToken)
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+        let status = await LiveStream.status({
+          accessToken: accessToken.accessToken,
+        });
+
+        switch (status) {
+          case "active":
+            status = "streaming";
+            break;
+          case "error":
+            status = "lost connection";
+            break;
+          default:
+            status = "waiting for connection..";
+            break;
+        }
+
+        return Response.json({ status });
       },
     },
   },

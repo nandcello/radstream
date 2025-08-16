@@ -29,7 +29,7 @@ const TitleDescription = () => {
   const { user, isLoading: isUserLoading } = useCurrentUser();
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ["yt-latest-broadcast"],
+    queryKey: ["broadcast", "title-description"],
     queryFn: async () => {
       const r = await fetch("/api/broadcast/fields");
       const data = (await r.json()) as {
@@ -146,13 +146,16 @@ const BroadcastStatus = () => {
   const { data, isLoading } = useQuery({
     queryKey: ["broadcast", "status"],
     queryFn: () => fetch("/api/broadcast/status").then((res) => res.json()),
+    refetchInterval: 1000,
   });
 
   if (isLoading || !data) return null;
 
   return (
     <span className="flex items-center gap-1">
-      <p className="animate-pulse">{data.status === "live" ? "🔴" : null}</p>
+      <p className="motion-safe:animate-pulse">
+        {data.status === "live" ? "🔴" : null}
+      </p>
       <p
         className={`text-sm ${data.status === "live" ? "text-red-600 font-bold text-md" : "text-gray-500"} uppercase`}
       >
@@ -177,7 +180,10 @@ const StreamKey = () => {
 
   return (
     <div>
-      <h2>Stream Key</h2>
+      <span className="flex justify-between items-center">
+        <h2>Stream Key</h2>
+        <LiveStreamStatus />
+      </span>
       <div className="relative">
         <Input
           type={show ? "text" : "password"}
@@ -225,5 +231,23 @@ const StreamKey = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const LiveStreamStatus = () => {
+  const { data } = useQuery({
+    queryKey: ["livestream", "status"],
+    queryFn: () => fetch("/api/livestream/status").then((res) => res.json()),
+    refetchInterval: 1000,
+  });
+
+  return (
+    <span className="flex items-center gap-1">
+      <p
+        className={`text-xs ${data?.status !== "streaming" ? "motion-safe:animate-out fade-out-50 repeat-infinite duration-1000 direction-alternate delay-1000 text-gray-500 " : "text-green-600 font-semibold text-md"} uppercase`}
+      >
+        {data?.status ?? "waiting for connection.."}
+      </p>
+    </span>
   );
 };

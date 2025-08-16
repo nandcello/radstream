@@ -44,7 +44,7 @@ export type Livestream = {
 
 export const streamKey = async ({ accessToken }: { accessToken: string }) => {
   const args = new URLSearchParams({
-    parts: "id,snippet,cdn,status",
+    parts: "id,cdn",
     mine: "true",
   });
   const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
@@ -56,7 +56,28 @@ export const streamKey = async ({ accessToken }: { accessToken: string }) => {
   const data = await response.json();
   console.log(">>> livestream/streamKey", JSON.stringify(data, null, 2));
   if (!response.ok) throw new Error("stream-key failed", data);
+  const latestStream = data.items[0] as Livestream;
 
-  const streamKey = data.items[0]?.cdn?.ingestionInfo?.streamName;
+  const streamKey = latestStream?.cdn?.ingestionInfo?.streamName;
   return streamKey;
+};
+
+export const status = async ({ accessToken }: { accessToken: string }) => {
+  const args = new URLSearchParams({
+    parts: "id,status",
+    mine: "true",
+  });
+  const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json();
+  console.log(">>> livestream/status", JSON.stringify(data, null, 2));
+  if (!response.ok) throw new Error("status failed", data);
+  const latestStream = data.items[0] as Livestream;
+
+  const status = latestStream?.status.streamStatus;
+  return status;
 };
