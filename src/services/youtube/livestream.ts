@@ -1,8 +1,7 @@
-export * as LiveStream from "./livestream";
-
 const baseUrl = "https://www.googleapis.com/youtube/v3";
-// https://developers.google.com/youtube/v3/live/docs/liveStreams#resource
-export type Livestream = {
+
+// https://developers.google.com/youtube/v3/live/docs/liveStreams#resource-representation
+export type LiveStream = {
   kind: "youtube#liveStream";
   etag: string;
   id: string;
@@ -26,7 +25,7 @@ export type Livestream = {
   status: {
     streamStatus: string; // e.g. "active", "created"
     healthStatus: {
-      status: string; // e.g. "good", "noData"
+      status: string; // e.g. "good", "ok", "bad", "noData", "revoked"
       lastUpdateTimeSeconds: number; // unsigned long
       configurationIssues: Array<{
         type: string;
@@ -39,6 +38,37 @@ export type Livestream = {
   contentDetails: {
     closedCaptionsIngestionUrl: string;
     isReusable: boolean;
+  };
+};
+
+export const getHealthStatus = async ({
+  accessToken,
+}: {
+  accessToken: string;
+}) => {
+  // Get live streams for the authenticated user
+  const args = new URLSearchParams({
+    part: "status",
+    mine: "true",
+    maxResults: "1",
+  });
+
+  const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("livestream-health-status failed");
+  }
+
+  const data = await response.json();
+  const liveStream = data.items?.[0] as Pick<LiveStream, "status"> | undefined;
+
+  return {
+    healthStatus: liveStream?.status?.healthStatus?.status || "noData",
   };
 };
 
@@ -56,7 +86,7 @@ export const streamKey = async ({ accessToken }: { accessToken: string }) => {
   const data = await response.json();
   console.log(">>> livestream/streamKey", JSON.stringify(data, null, 2));
   if (!response.ok) throw new Error("stream-key failed", data);
-  const latestStream = data.items[0] as Livestream;
+  const latestStream = data.items[0] as LiveStream;
 
   const streamKey = latestStream?.cdn?.ingestionInfo?.streamName;
   return streamKey;
@@ -76,7 +106,7 @@ export const status = async ({ accessToken }: { accessToken: string }) => {
   const data = await response.json();
   console.log(">>> livestream/status", JSON.stringify(data, null, 2));
   if (!response.ok) throw new Error("status failed", data);
-  const latestStream = data.items[0] as Livestream;
+  const latestStream = data.items[0] as LiveStream;
 
   const status = latestStream?.status.streamStatus;
   return status;

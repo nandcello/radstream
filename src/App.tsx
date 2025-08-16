@@ -128,6 +128,7 @@ const YTAuthButton = () => {
         <span className="flex gap-2 items-center">
           <p>{session.data.user.name}</p>
           <BroadcastStatus />
+          <HealthStatus />
         </span>
         <Button variant="ghost" type="button" onClick={handleSignOut}>
           Sign out
@@ -160,6 +161,58 @@ const BroadcastStatus = () => {
         className={`text-sm ${data.status === "live" ? "text-red-600 font-bold text-md" : "text-gray-500"} uppercase`}
       >
         {data?.status}
+      </p>
+    </span>
+  );
+};
+
+const HealthStatus = () => {
+  const { data, isLoading } = useQuery({
+    queryKey: ["livestream", "health"],
+    queryFn: () => fetch("/livestream/health").then((res) => res.json()),
+  });
+
+  if (isLoading || !data) return null;
+
+  const getHealthIcon = (status: string) => {
+    switch (status) {
+      case "good":
+        return "🟢";
+      case "ok":
+        return "🟡";
+      case "bad":
+        return "🔴";
+      case "noData":
+        return "⚪";
+      case "revoked":
+        return "❌";
+      default:
+        return "⚪";
+    }
+  };
+
+  const getHealthColor = (status: string) => {
+    switch (status) {
+      case "good":
+        return "text-green-600";
+      case "ok":
+        return "text-yellow-600";
+      case "bad":
+        return "text-red-600";
+      case "noData":
+        return "text-gray-500";
+      case "revoked":
+        return "text-red-800";
+      default:
+        return "text-gray-500";
+    }
+  };
+
+  return (
+    <span className="flex items-center gap-1">
+      <p>{getHealthIcon(data.healthStatus)}</p>
+      <p className={`text-sm ${getHealthColor(data.healthStatus)} uppercase`}>
+        health: {data.healthStatus}
       </p>
     </span>
   );

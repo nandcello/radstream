@@ -2,7 +2,7 @@ import { serve } from "bun";
 import index from "./index.html";
 import { auth } from "./services/auth";
 import { Broadcast } from "./services/youtube/broadcast";
-import { LiveStream } from "./services/youtube/livestream";
+import * as LiveStream from "./services/youtube/livestream";
 
 const server = serve({
   development: process.env.NODE_ENV !== "production" && {
@@ -95,6 +95,25 @@ const server = serve({
         return Response.json({
           status: status !== "live" ? "standby" : "live",
         });
+      },
+    },
+    "/livestream/health": {
+      GET: async (req) => {
+        const accessToken = await auth.api.getAccessToken({
+          body: {
+            providerId: "google",
+          },
+          headers: req.headers,
+        });
+
+        if (!accessToken.accessToken)
+          return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+        const healthStatus = await LiveStream.getHealthStatus({
+          accessToken: accessToken.accessToken,
+        });
+
+        return Response.json(healthStatus);
       },
     },
     "/api/livestream/stream-key": {
