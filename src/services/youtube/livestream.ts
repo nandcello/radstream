@@ -19,14 +19,14 @@ export type LiveStream = {
       ingestionAddress: string;
       backupIngestionAddress: string;
     };
-    resolution: string;
-    frameRate: string;
+    resolution: string; // e.g. "variable", "1080p"
+    frameRate: string; // e.g. "variable", "60fps"
   };
   status: {
-    streamStatus: string;
+    streamStatus: string; // e.g. "active", "created"
     healthStatus: {
-      status: string; // "good", "ok", "bad", "noData", "revoked"
-      lastUpdateTimeSeconds: string;
+      status: string; // e.g. "good", "ok", "bad", "noData", "revoked"
+      lastUpdateTimeSeconds: number; // unsigned long
       configurationIssues: Array<{
         type: string;
         severity: string;
@@ -34,6 +34,10 @@ export type LiveStream = {
         description: string;
       }>;
     };
+  };
+  contentDetails: {
+    closedCaptionsIngestionUrl: string;
+    isReusable: boolean;
   };
 };
 
@@ -66,4 +70,44 @@ export const getHealthStatus = async ({
   return {
     healthStatus: liveStream?.status?.healthStatus?.status || "noData",
   };
+};
+
+export const streamKey = async ({ accessToken }: { accessToken: string }) => {
+  const args = new URLSearchParams({
+    parts: "id,cdn",
+    mine: "true",
+  });
+  const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json();
+  console.log(">>> livestream/streamKey", JSON.stringify(data, null, 2));
+  if (!response.ok) throw new Error("stream-key failed", data);
+  const latestStream = data.items[0] as LiveStream;
+
+  const streamKey = latestStream?.cdn?.ingestionInfo?.streamName;
+  return streamKey;
+};
+
+export const status = async ({ accessToken }: { accessToken: string }) => {
+  const args = new URLSearchParams({
+    parts: "id,status",
+    mine: "true",
+  });
+  const response = await fetch(`${baseUrl}/liveStreams?${args}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+
+  const data = await response.json();
+  console.log(">>> livestream/status", JSON.stringify(data, null, 2));
+  if (!response.ok) throw new Error("status failed", data);
+  const latestStream = data.items[0] as LiveStream;
+
+  const status = latestStream?.status.streamStatus;
+  return status;
 };
