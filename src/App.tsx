@@ -1,4 +1,3 @@
-import { useQuery } from "@tanstack/react-query";
 import { Check, Copy, Eye, EyeOff, Loader } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./components/ui/button";
@@ -9,6 +8,10 @@ import { useAuth } from "./hooks/auth";
 import { useBroadcast } from "./hooks/useBroadcast";
 import { useUpdateBroadcast } from "./hooks/useUpdateBroadcast";
 import "./index.css";
+import {
+  useLivestreamStatus,
+  useLivestreamStreamKey,
+} from "./hooks/useLivestream";
 
 export function App() {
   return (
@@ -128,15 +131,10 @@ const BroadcastStatus = () => {
 const StreamKey = () => {
   const [show, setShow] = useState(false);
   const [copied, setCopied] = useState(false);
-  const { data } = useQuery({
-    queryKey: ["livestream", "stream-key"],
-    queryFn: () =>
-      fetch("/api/livestream/stream-key").then((res) => res.json()) as Promise<{
-        streamKey: string;
-      }>,
-  });
+  const { data, isLoading } = useLivestreamStreamKey();
 
-  if (!data) return null;
+  if (isLoading) return <p>Loading stream key...</p>;
+  if (!data?.streamKey) return null;
 
   return (
     <div>
@@ -172,7 +170,9 @@ const StreamKey = () => {
             size="icon"
             onClick={async () => {
               try {
-                await navigator.clipboard.writeText(data.streamKey);
+                if (data?.streamKey) {
+                  await navigator.clipboard.writeText(data.streamKey);
+                }
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1600);
               } catch (e) {
@@ -195,18 +195,13 @@ const StreamKey = () => {
 };
 
 const LiveStreamStatus = () => {
-  const { data } = useQuery({
-    queryKey: ["livestream", "status"],
-    queryFn: () => fetch("/api/livestream/status").then((res) => res.json()),
-    // refetchInterval: 1000,
-  });
-
+  const { data, isLoading } = useLivestreamStatus();
   return (
     <span className="flex items-center gap-1">
       <p
         className={`text-xs ${data?.status !== "streaming" ? "motion-safe:animate-out fade-out-50 repeat-infinite duration-1000 direction-alternate delay-1000 text-gray-500 " : "text-green-600 font-semibold text-md"} uppercase`}
       >
-        {data?.status ?? "waiting for connection.."}
+        {isLoading ? "loading.." : (data?.status ?? "waiting for connection..")}
       </p>
     </span>
   );

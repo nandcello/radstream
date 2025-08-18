@@ -33,7 +33,8 @@ Example:
   process.exit(0);
 }
 
-const toCamelCase = (str: string): string => str.replace(/-([a-z])/g, g => g[1].toUpperCase());
+const toCamelCase = (str: string): string =>
+  str.replace(/-([a-z])/g, (_match, p1: string) => p1.toUpperCase());
 
 const parseValue = (value: string): any => {
   if (value === "true") return true;
@@ -42,13 +43,17 @@ const parseValue = (value: string): any => {
   if (/^\d+$/.test(value)) return parseInt(value, 10);
   if (/^\d*\.\d+$/.test(value)) return parseFloat(value);
 
-  if (value.includes(",")) return value.split(",").map(v => v.trim());
+  if (value.includes(",")) return value.split(",").map((v) => v.trim());
 
   return value;
 };
 
-function parseArgs(): Partial<Bun.BuildConfig> {
-  const config: Partial<Bun.BuildConfig> = {};
+// Dynamic build config bag allowing arbitrary CLI-driven keys.
+// Using unknown to avoid any and casting at usage sites.
+type BuildConfig = Partial<Bun.BuildConfig> & { [key: string]: unknown };
+
+function parseArgs(): BuildConfig {
+  const config: BuildConfig = {};
   const args = process.argv.slice(2);
 
   for (let i = 0; i < args.length; i++) {
@@ -58,13 +63,18 @@ function parseArgs(): Partial<Bun.BuildConfig> {
 
     if (arg.startsWith("--no-")) {
       const key = toCamelCase(arg.slice(5));
-      config[key] = false;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      (config as Record<string, unknown>)[key] = false;
       continue;
     }
 
-    if (!arg.includes("=") && (i === args.length - 1 || args[i + 1]?.startsWith("--"))) {
+    if (
+      !arg.includes("=") &&
+      (i === args.length - 1 || args[i + 1]?.startsWith("--"))
+    ) {
       const key = toCamelCase(arg.slice(2));
-      config[key] = true;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      (config as Record<string, unknown>)[key] = true;
       continue;
     }
 
@@ -82,10 +92,14 @@ function parseArgs(): Partial<Bun.BuildConfig> {
 
     if (key.includes(".")) {
       const [parentKey, childKey] = key.split(".");
-      config[parentKey] = config[parentKey] || {};
-      config[parentKey][childKey] = parseValue(value);
+      if (!parentKey || !childKey) continue;
+      const bag = config as Record<string, unknown>;
+      const parent =
+        (bag[parentKey] as Record<string, unknown> | undefined) || {};
+      parent[childKey] = parseValue(value);
+      bag[parentKey] = parent;
     } else {
-      config[key] = parseValue(value);
+      (config as Record<string, unknown>)[key] = parseValue(value);
     }
   }
 
@@ -118,9 +132,11 @@ if (existsSync(outdir)) {
 const start = performance.now();
 
 const entrypoints = [...new Bun.Glob("**.html").scanSync("src")]
-  .map(a => path.resolve("src", a))
-  .filter(dir => !dir.includes("node_modules"));
-console.log(`📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`);
+  .map((a) => path.resolve("src", a))
+  .filter((dir) => !dir.includes("node_modules"));
+console.log(
+  `📄 Found ${entrypoints.length} HTML ${entrypoints.length === 1 ? "file" : "files"} to process\n`,
+);
 
 const result = await Bun.build({
   entrypoints,
@@ -137,7 +153,7 @@ const result = await Bun.build({
 
 const end = performance.now();
 
-const outputTable = result.outputs.map(output => ({
+const outputTable = result.outputs.map((output) => ({
   File: path.relative(process.cwd(), output.path),
   Type: output.kind,
   Size: formatFileSize(output.size),

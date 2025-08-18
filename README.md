@@ -43,3 +43,12 @@ App will be at http://localhost:3000
 1. Open the app in your browser
 2. Click "Connect YouTube" → complete Google consent
 3. Back on the app, click "Get Stream Key" to fetch (and create if needed) a reusable stream key
+
+## Livestream data fetching (client-side)
+
+Previously, livestream status and stream key were proxied through server routes under `/api/livestream/*`. These proxy endpoints have been removed. The client now calls the YouTube Data API directly using the authenticated access token via React Query hooks:
+
+- `useLivestreamStreamKey` – retrieves the current stream key (cdn.ingestionInfo.streamName)
+- `useLivestreamStatus` – polls the livestream status and normalizes it (e.g. `active` → `streaming`)
+
+See `src/hooks/useLivestream.tsx` for implementation. This mirrors the existing `useBroadcast` pattern and reduces server surface area.

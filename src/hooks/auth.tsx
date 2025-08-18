@@ -16,11 +16,9 @@ export const useAuth = () => {
   });
 
   const { mutate: signOut } = useMutation({
-    mutationFn: async () => {
-      await authClient.signOut();
-      queryClient.invalidateQueries({
-        queryKey: ["auth", "broadcast", "livestream"],
-      });
+    mutationFn: () => authClient.signOut(),
+    onSuccess: () => {
+      queryClient.invalidateQueries();
     },
   });
 
@@ -55,11 +53,9 @@ export const useAccessToken = () => {
       const response = await authClient.getAccessToken({
         providerId: "google",
       });
-      return response.data?.accessToken;
+      return { accessToken: response.data?.accessToken };
     },
   });
 
-  return {
-    accessToken: data,
-  };
+  return { accessToken: data?.accessToken };
 };
