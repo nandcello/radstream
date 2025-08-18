@@ -1,11 +1,13 @@
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Check, Copy, Eye, EyeOff, Loader } from "lucide-react";
 import { useState } from "react";
 import { Button } from "./components/ui/button";
 import { Card } from "./components/ui/card";
 import { Input } from "./components/ui/input";
 import { Textarea } from "./components/ui/textarea";
-import { useAuth, useCurrentUser } from "./hooks/auth";
+import { useAuth } from "./hooks/auth";
+import { useBroadcast } from "./hooks/useBroadcast";
+import { useUpdateBroadcast } from "./hooks/useUpdateBroadcast";
 import "./index.css";
 
 export function App() {
@@ -26,59 +28,21 @@ export function App() {
 export default App;
 
 const TitleDescription = () => {
-  const { user, isLoading: isUserLoading } = useCurrentUser();
-
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ["broadcast", "title-description"],
-    queryFn: async () => {
-      const r = await fetch("/api/broadcast/fields");
-      const data = (await r.json()) as {
-        id: string;
-        title?: string;
-        description?: string;
-      };
-      if (!r.ok) throw new Error("broadcast-fields failed");
-      return data;
-    },
-    enabled: !!user,
-  });
-
-  const { mutate, isPending } = useMutation({
-    mutationFn: async ({
-      title,
-      description,
-    }: {
-      title: string;
-      description: string;
-    }) => {
-      await fetch("/api/broadcast/fields", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: data?.id,
-          title,
-          description,
-        }),
-      });
-      refetch();
-    },
-  });
+  const { title, description, isLoading } = useBroadcast();
+  const { updateBroadcast, isLoading: isBroadcastUpdating } =
+    useUpdateBroadcast();
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (isPending) return;
+    if (isBroadcastUpdating) return;
     const formData = new FormData(e.currentTarget);
-    mutate({
+    updateBroadcast({
       title: formData.get("title") as string,
       description: formData.get("description") as string,
     });
   };
 
-  if (isLoading || isUserLoading) return <p>Loading broadcast info...</p>;
-
-  if (!user) return null;
+  if (isLoading) return <p>Loading broadcast info...</p>;
 
   return (
     <form onSubmit={handleSubmit}>
@@ -88,18 +52,18 @@ const TitleDescription = () => {
         className="mb-3"
         id="title"
         type="text"
-        defaultValue={data?.title ?? ""}
+        defaultValue={title ?? ""}
       />
       <label htmlFor="description">Description</label>
       <Textarea
         name="description"
         className="mb-3"
         id="description"
-        defaultValue={data?.description ?? ""}
+        defaultValue={description ?? ""}
       />
       <Button className="flex justify-self-end" type="submit">
         Save{" "}
-        {isPending && (
+        {isBroadcastUpdating && (
           <span className="animate-spin">
             <Loader />
           </span>
@@ -143,23 +107,19 @@ const YTAuthButton = () => {
 };
 
 const BroadcastStatus = () => {
-  const { data, isLoading } = useQuery({
-    queryKey: ["broadcast", "status"],
-    queryFn: () => fetch("/api/broadcast/status").then((res) => res.json()),
-    refetchInterval: 1000,
-  });
+  const { status, isLoading } = useBroadcast();
 
-  if (isLoading || !data) return null;
+  if (isLoading || !status) return null;
 
   return (
     <span className="flex items-center gap-1">
       <p className="motion-safe:animate-pulse">
-        {data.status === "live" ? "🔴" : null}
+        {status === "live" ? "🔴" : null}
       </p>
       <p
-        className={`text-sm ${data.status === "live" ? "text-red-600 font-bold text-md" : "text-gray-500"} uppercase`}
+        className={`text-sm uppercase ${status === "live" ? "text-red-600 font-bold text-md" : "text-gray-500"}`}
       >
-        {data?.status}
+        {status === "live" ? "Live" : "Offline"}
       </p>
     </span>
   );
@@ -238,7 +198,7 @@ const LiveStreamStatus = () => {
   const { data } = useQuery({
     queryKey: ["livestream", "status"],
     queryFn: () => fetch("/api/livestream/status").then((res) => res.json()),
-    refetchInterval: 1000,
+    // refetchInterval: 1000,
   });
 
   return (

@@ -47,3 +47,19 @@ export const useCurrentUser = () => {
     isLoading,
   };
 };
+
+export const useAccessToken = () => {
+  const { data } = useQuery({
+    queryKey: ["auth", "accessToken"],
+    queryFn: async () => {
+      const response = await authClient.getAccessToken({
+        providerId: "google",
+      });
+      return response.data?.accessToken;
+    },
+  });
+
+  return {
+    accessToken: data,
+  };
+};

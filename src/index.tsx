@@ -1,7 +1,6 @@
 import { serve } from "bun";
 import index from "./index.html";
 import { auth } from "./services/auth";
-import { Broadcast } from "./services/youtube/broadcast";
 import { LiveStream } from "./services/youtube/livestream";
 
 const server = serve({
@@ -17,85 +16,6 @@ const server = serve({
     "/api/*": {
       POST: (req) => auth.handler(req),
       GET: (req) => auth.handler(req),
-    },
-    "/api/broadcast/fields": {
-      GET: async (req) => {
-        const accessToken = await auth.api.getAccessToken({
-          body: {
-            providerId: "google",
-          },
-          headers: req.headers,
-        });
-
-        if (!accessToken.accessToken)
-          return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-        return Response.json(
-          await Broadcast.latestTitleAndDescription({
-            accessToken: accessToken.accessToken,
-          }),
-        );
-      },
-      POST: async (req) => {
-        const accessToken = await auth.api.getAccessToken({
-          body: {
-            providerId: "google",
-          },
-          headers: req.headers,
-        });
-
-        if (!accessToken.accessToken)
-          return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-        const body = (await req.json()) as {
-          id?: string;
-          title?: string;
-          description?: string;
-        };
-
-        await Broadcast.updateBroadcastTitleDescription({
-          id: body.id,
-          title: body.title,
-          description: body.description,
-          accessToken: accessToken.accessToken,
-        });
-
-        return Response.json({});
-      },
-    },
-    "/api/broadcast/status": {
-      GET: async (req) => {
-        const accessToken = await auth.api.getAccessToken({
-          body: {
-            providerId: "google",
-          },
-          headers: req.headers,
-        });
-
-        if (!accessToken.accessToken)
-          return Response.json({ error: "Unauthorized" }, { status: 401 });
-
-        const latestBroadcast = await Broadcast.latestTitleAndDescription({
-          accessToken: accessToken.accessToken,
-        });
-
-        console.log(
-          ">>> broadcast status",
-          JSON.stringify(latestBroadcast, null, 2),
-        );
-
-        if (!latestBroadcast?.id)
-          return Response.json({ error: "Not Found" }, { status: 404 });
-
-        const status = await Broadcast.status({
-          id: latestBroadcast.id,
-          accessToken: accessToken.accessToken,
-        });
-
-        return Response.json({
-          status: status !== "live" ? "standby" : "live",
-        });
-      },
     },
     "/api/livestream/stream-key": {
       GET: async (req) => {
