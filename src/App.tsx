@@ -8,10 +8,8 @@ import { useAuth } from "./hooks/auth";
 import { useBroadcast } from "./hooks/useBroadcast";
 import { useUpdateBroadcast } from "./hooks/useUpdateBroadcast";
 import "./index.css";
-import {
-  useLivestreamStatus,
-  useLivestreamStreamKey,
-} from "./hooks/useLivestream";
+import { useLivestream, useLivestreamStreamKey } from "./hooks/useLivestream";
+import { useStartStream } from "./hooks/useStartStream";
 
 export function App() {
   return (
@@ -20,6 +18,7 @@ export function App() {
       <Card className="px-4 py-2 max-w-xl mb-4">
         <YTAuthButton />
         <TitleDescription />
+        <StartStreamingButton />
       </Card>
       <Card className="px-4 py-2 max-w-xl">
         <StreamKey />
@@ -64,7 +63,11 @@ const TitleDescription = () => {
         id="description"
         defaultValue={description ?? ""}
       />
-      <Button className="flex justify-self-end" type="submit">
+      <Button
+        variant="secondary"
+        className="flex justify-self-end"
+        type="submit"
+      >
         Save{" "}
         {isBroadcastUpdating && (
           <span className="animate-spin">
@@ -194,14 +197,70 @@ const StreamKey = () => {
   );
 };
 
+const StartStreamingButton = () => {
+  const { id: broadcastId, status: broadcastStatus } = useBroadcast();
+  const { status: livestreamStatusData } = useLivestream();
+  const {
+    startStream,
+    isPending: isStarting,
+    error,
+    data,
+    isSuccess,
+  } = useStartStream();
+
+  // Conditions: need a broadcast id & livestream is streaming (receiving data) & broadcast not already live
+  const hasValidBroadcast = !!broadcastId;
+  const livestreamStreaming = livestreamStatusData === "receiving data"; // 'streaming' mapped from 'active'
+  const isAlreadyLive = broadcastStatus === "live";
+  const canStart =
+    hasValidBroadcast && livestreamStreaming && !isAlreadyLive && !isStarting;
+
+  const handleStart = () => {
+    if (!canStart || !broadcastId) return;
+    startStream({ broadcastId });
+  };
+
+  let label = "Start Streaming";
+  if (isStarting) label = "Starting...";
+  else if (isSuccess) label = data?.status === "live" ? "Live" : "Started";
+
+  return (
+    <div className="mt-4 flex flex-col items-end gap-1">
+      <Button
+        type="button"
+        disabled={!canStart}
+        onClick={handleStart}
+        className={!canStart ? "opacity-60 cursor-not-allowed" : ""}
+      >
+        {label}
+        {isStarting && (
+          <span className="ml-2 animate-spin">
+            <Loader className="h-4 w-4" />
+          </span>
+        )}
+      </Button>
+      {error && (
+        <p className="text-xs text-red-600 max-w-xs text-right">
+          {error.message}
+        </p>
+      )}
+      {isSuccess && data?.status !== "live" && (
+        <p className="text-xs text-gray-500 max-w-xs text-right">
+          Status: {data?.status}
+        </p>
+      )}
+    </div>
+  );
+};
+
 const LiveStreamStatus = () => {
-  const { data, isLoading } = useLivestreamStatus();
+  const { status, isLoading } = useLivestream();
   return (
     <span className="flex items-center gap-1">
       <p
-        className={`text-xs ${data?.status !== "streaming" ? "motion-safe:animate-out fade-out-50 repeat-infinite duration-1000 direction-alternate delay-1000 text-gray-500 " : "text-green-600 font-semibold text-md"} uppercase`}
+        className={`text-xs ${status !== "receiving data" ? "motion-safe:animate-out fade-out-50 repeat-infinite duration-1000 direction-alternate delay-1000 text-gray-500 " : "text-green-600 font-semibold text-md"} uppercase`}
       >
-        {isLoading ? "loading.." : (data?.status ?? "waiting for connection..")}
+        {isLoading ? "loading.." : (status ?? "waiting for connection..")}
       </p>
     </span>
   );

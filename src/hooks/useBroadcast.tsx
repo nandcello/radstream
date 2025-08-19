@@ -70,7 +70,7 @@ export const useBroadcast = () => {
     queryKey: ["broadcast", "info"],
     queryFn: async () => {
       const args = new URLSearchParams({
-        part: "id,snippet,status",
+        part: "id,snippet,status,contentDetails",
         mine: "true",
       });
       const response = await fetch(`${baseUrl}/liveBroadcasts?${args}`, {
@@ -81,11 +81,33 @@ export const useBroadcast = () => {
       });
 
       if (!response.ok) {
+        console.error(
+          "[broadcast] fetch error",
+          response.status,
+          response.statusText,
+        );
         throw new Error("Failed to fetch broadcasts");
       }
 
       const parsedResponse = await response.json();
       const latestBroadcast = parsedResponse.items[0] as LiveBroadcast;
+      if (latestBroadcast) {
+        console.info(
+          "[broadcast] fetched",
+          JSON.stringify(
+            {
+              id: latestBroadcast.id,
+              status: latestBroadcast.status?.lifeCycleStatus,
+              boundStreamId: latestBroadcast.contentDetails?.boundStreamId,
+              scheduledStart: latestBroadcast.snippet?.scheduledStartTime,
+            },
+            null,
+            0,
+          ),
+        );
+      } else {
+        console.info("[broadcast] no broadcasts returned");
+      }
 
       return {
         id: latestBroadcast.id,
@@ -93,8 +115,10 @@ export const useBroadcast = () => {
         title: latestBroadcast.snippet.title,
         description: latestBroadcast.snippet.description,
         scheduledStartTime: latestBroadcast.snippet.scheduledStartTime,
+        boundStreamId: latestBroadcast.contentDetails?.boundStreamId,
       };
     },
+    refetchInterval: 1000,
     enabled: !!accessToken,
   });
 
