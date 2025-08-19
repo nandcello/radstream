@@ -136,6 +136,9 @@ export const useStartStream = () => {
     status?: string;
     isLoading: boolean;
   };
+  // How long to wait after creating a broadcast before attempting transition.
+  // (YT API can briefly reject immediate transitions on a just-created resource)
+  const WAIT_AFTER_BROADCAST_CREATE_MS = 3500;
 
   const mutation = useMutation<StartStreamResult, Error, StartStreamOptions>({
     mutationFn: async (opts) => {
@@ -145,20 +148,37 @@ export const useStartStream = () => {
         JSON.stringify({ opts }, null, 0),
       );
       let workingBroadcastId = opts.broadcastId || broadcast.id;
+      let workingBroadcastStatus = broadcast.status; // lifecycle
+      let justCreated = false;
 
-      // If current broadcast isn't ready, create a new one copying title/description
-      if (
-        !workingBroadcastId ||
-        (broadcast.status &&
-          !["ready", "created", "testing"].includes(broadcast.status))
-      ) {
+      // 1. Early exit if already live
+      if (workingBroadcastStatus === "live" && workingBroadcastId) {
+        console.info(
+          "[startStream] broadcast already live – skipping transition",
+          JSON.stringify(
+            { broadcastId: workingBroadcastId, status: workingBroadcastStatus },
+            null,
+            0,
+          ),
+        );
+        return {
+          broadcastId: workingBroadcastId,
+          // use any provided stream id (may already be bound) else attempt livestream id
+          streamId:
+            opts.streamId || broadcast.boundStreamId || livestream.id || "",
+          status: workingBroadcastStatus,
+        };
+      }
+
+      // 2. If status is complete OR we have no broadcast, create a new one
+      if (!workingBroadcastId || workingBroadcastStatus === "complete") {
         console.info(
           "[startStream] creating new broadcast",
           JSON.stringify(
             {
               reason: !workingBroadcastId
                 ? "no existing id"
-                : `status=${broadcast.status}`,
+                : "status=complete",
               copyTitle: broadcast.title,
               copyDescription: !!broadcast.description,
             },
@@ -171,24 +191,31 @@ export const useStartStream = () => {
           broadcast.title,
           broadcast.description,
         );
+        justCreated = true;
+        workingBroadcastId = created.id;
+        workingBroadcastStatus = created.status;
         console.info(
           "[startStream] created broadcast",
-          JSON.stringify(created, null, 0),
+          JSON.stringify(
+            { id: workingBroadcastId, status: workingBroadcastStatus },
+            null,
+            0,
+          ),
         );
-        workingBroadcastId = created.id;
-        // Invalidate to refresh broadcast hook data
         await queryClient.invalidateQueries({ queryKey: ["broadcast"] });
         console.info("[startStream] invalidated broadcast after create");
       }
-      if (!workingBroadcastId) throw new Error("No broadcast available");
 
-      // If we don't already know a streamId (from options) try livestream hook
+      if (!workingBroadcastId)
+        throw new Error("No broadcast available after creation attempt");
+
+      // 3. Acquire stream id (existing bound, supplied, or latest livestream)
       const streamId =
-        opts.streamId || broadcast.boundStreamId || livestream.id; // livestream hook returns id via data spreading
+        opts.streamId || broadcast.boundStreamId || livestream.id;
       if (!streamId)
         throw new Error("No livestream stream id available to bind");
 
-      // If broadcast is not bound, bind first
+      // 4. Bind if not bound
       if (!broadcast.boundStreamId) {
         console.info(
           "[startStream] binding broadcast to stream",
@@ -199,9 +226,43 @@ export const useStartStream = () => {
           ),
         );
         await bindBroadcastToStream(accessToken, workingBroadcastId, streamId);
-        // Invalidate to refresh boundStreamId
-        queryClient.invalidateQueries({ queryKey: ["broadcast"] });
+        await queryClient.invalidateQueries({ queryKey: ["broadcast"] });
         console.info("[startStream] invalidated broadcast after bind");
+      }
+
+      // 5. Decide if we should transition.
+      // Only transition if status is ready or testing (or created as a fallback) per new requirements.
+      const targetableStatuses = ["ready", "testing", "created"]; // include created as fallback
+      if (!targetableStatuses.includes(workingBroadcastStatus || "")) {
+        console.info(
+          "[startStream] status not transitionable yet – skipping",
+          JSON.stringify(
+            { broadcastId: workingBroadcastId, status: workingBroadcastStatus },
+            null,
+            0,
+          ),
+        );
+        return {
+          broadcastId: workingBroadcastId,
+          streamId,
+          status: workingBroadcastStatus,
+        };
+      }
+
+      // 6. Optional wait if we JUST created it (stabilization window)
+      if (justCreated) {
+        console.info(
+          "[startStream] waiting after create before transition",
+          JSON.stringify(
+            {
+              ms: WAIT_AFTER_BROADCAST_CREATE_MS,
+              broadcastId: workingBroadcastId,
+            },
+            null,
+            0,
+          ),
+        );
+        await new Promise((r) => setTimeout(r, WAIT_AFTER_BROADCAST_CREATE_MS));
       }
 
       console.info(
@@ -212,7 +273,6 @@ export const useStartStream = () => {
           0,
         ),
       );
-      // Transition to live
       const { status } = await transitionBroadcast(
         accessToken,
         workingBroadcastId,
@@ -223,7 +283,7 @@ export const useStartStream = () => {
         JSON.stringify({ broadcastId: workingBroadcastId, status }, null, 0),
       );
 
-      // Invalidate caches for status updates
+      // 7. Invalidate caches for status updates
       queryClient.invalidateQueries({ queryKey: ["broadcast"] });
       queryClient.invalidateQueries({ queryKey: ["livestream"] });
       console.info(

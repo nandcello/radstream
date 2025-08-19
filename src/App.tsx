@@ -8,6 +8,7 @@ import { useAuth } from "./hooks/auth";
 import { useBroadcast } from "./hooks/useBroadcast";
 import { useUpdateBroadcast } from "./hooks/useUpdateBroadcast";
 import "./index.css";
+import { useEndStream } from "./hooks/useEndStream";
 import { useLivestream, useLivestreamStreamKey } from "./hooks/useLivestream";
 import { useStartStream } from "./hooks/useStartStream";
 
@@ -203,50 +204,139 @@ const StartStreamingButton = () => {
   const {
     startStream,
     isPending: isStarting,
-    error,
-    data,
-    isSuccess,
+    error: startError,
+    data: startData,
+    isSuccess: isStartSuccess,
   } = useStartStream();
+  const {
+    endStream,
+    isPending: isEnding,
+    error: endError,
+    isSuccess: isEndSuccess,
+  } = useEndStream();
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
 
-  // Conditions: need a broadcast id & livestream is streaming (receiving data) & broadcast not already live
+  // Conditions
   const hasValidBroadcast = !!broadcastId;
-  const livestreamStreaming = livestreamStatusData === "receiving data"; // 'streaming' mapped from 'active'
+  const livestreamStreaming = livestreamStatusData === "receiving data"; // mapped from 'active'
   const isAlreadyLive = broadcastStatus === "live";
   const canStart =
-    hasValidBroadcast && livestreamStreaming && !isAlreadyLive && !isStarting;
+    hasValidBroadcast &&
+    livestreamStreaming &&
+    !isAlreadyLive &&
+    !isStarting &&
+    !isEnding;
+  const canEnd = isAlreadyLive && !isEnding && !isStarting;
 
   const handleStart = () => {
     if (!canStart || !broadcastId) return;
     startStream({ broadcastId });
   };
+  const handleEnd = () => {
+    if (!canEnd) return;
+    if (!confirmingEnd) {
+      setConfirmingEnd(true);
+      return;
+    }
+    endStream();
+  };
 
   let label = "Start Streaming";
   if (isStarting) label = "Starting...";
-  else if (isSuccess) label = data?.status === "live" ? "Live" : "Started";
+  else if (isStartSuccess)
+    label = startData?.status === "live" ? "Live" : "Started";
 
   return (
-    <div className="mt-4 flex flex-col items-end gap-1">
-      <Button
-        type="button"
-        disabled={!canStart}
-        onClick={handleStart}
-        className={!canStart ? "opacity-60 cursor-not-allowed" : ""}
-      >
-        {label}
-        {isStarting && (
-          <span className="ml-2 animate-spin">
-            <Loader className="h-4 w-4" />
-          </span>
-        )}
-      </Button>
-      {error && (
+    <div className="mt-4 flex flex-col items-end gap-2 w-full">
+      {!isAlreadyLive && (
+        <Button
+          type="button"
+          disabled={!canStart}
+          onClick={handleStart}
+          className={!canStart ? "opacity-60 cursor-not-allowed" : ""}
+        >
+          {label}
+          {isStarting && (
+            <span className="ml-2 animate-spin">
+              <Loader className="h-4 w-4" />
+            </span>
+          )}
+        </Button>
+      )}
+      {isAlreadyLive && (
+        <div className="flex flex-col items-end gap-2 w-full">
+          <div className="flex items-center gap-2">
+            {confirmingEnd && (
+              <div className="text-right mr-2">
+                <p className="text-xs text-gray-600 mb-1">
+                  End the live stream? This cannot be undone.
+                </p>
+                <div className="flex gap-1 justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={isEnding}
+                    onClick={() => setConfirmingEnd(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    disabled={isEnding}
+                    onClick={handleEnd}
+                  >
+                    {isEnding ? (
+                      <span className="flex items-center gap-1">
+                        Ending <Loader className="h-3 w-3 animate-spin" />
+                      </span>
+                    ) : (
+                      "Yes, End"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {!confirmingEnd && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={!canEnd}
+                onClick={handleEnd}
+                className={!canEnd ? "opacity-60 cursor-not-allowed" : ""}
+              >
+                {isEnding ? (
+                  <span className="flex items-center gap-1">
+                    Ending <Loader className="h-4 w-4 animate-spin" />
+                  </span>
+                ) : (
+                  "End Stream"
+                )}
+              </Button>
+            )}
+          </div>
+          {endError && (
+            <p className="text-xs text-red-600 max-w-xs text-right">
+              {endError.message}
+            </p>
+          )}
+        </div>
+      )}
+      {startError && (
         <p className="text-xs text-red-600 max-w-xs text-right">
-          {error.message}
+          {startError.message}
         </p>
       )}
-      {isSuccess && data?.status !== "live" && (
+      {isStartSuccess && startData?.status !== "live" && (
         <p className="text-xs text-gray-500 max-w-xs text-right">
-          Status: {data?.status}
+          Status: {startData?.status}
+        </p>
+      )}
+      {isEndSuccess && (
+        <p className="text-xs text-gray-500 max-w-xs text-right">
+          Stream ended.
         </p>
       )}
     </div>
