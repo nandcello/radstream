@@ -97,7 +97,7 @@ const fetchStreams = async (accessToken: string, parts: string) => {
 export const useLivestreamStreamKey = () => {
   const { accessToken } = useAccessToken();
   return useQuery<{ streamKey?: string }>({
-    queryKey: ["livestream", "stream-key"],
+    queryKey: ["livestream", "stream-key", accessToken],
     enabled: !!accessToken,
     queryFn: async () => {
       if (!accessToken) return { streamKey: undefined };
@@ -113,7 +113,7 @@ export const useLivestream = () => {
   // track previous status for change-diff logging
   let previousStatus: string | undefined;
   const { data, isLoading } = useQuery<{ status: string | undefined }>({
-    queryKey: ["livestream", "status"],
+    queryKey: ["livestream", "status", accessToken],
     enabled: !!accessToken,
     refetchInterval: 1000,
     queryFn: async () => {

@@ -67,7 +67,7 @@ export type LiveBroadcast = {
 export const useBroadcast = () => {
   const { accessToken } = useAccessToken();
   const { data, isLoading } = useQuery({
-    queryKey: ["broadcast", "info"],
+    queryKey: ["broadcast", "info", accessToken],
     queryFn: async () => {
       const args = new URLSearchParams({
         part: "id,snippet,status,contentDetails",
